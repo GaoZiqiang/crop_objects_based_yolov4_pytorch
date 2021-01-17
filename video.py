@@ -9,6 +9,7 @@ import time
 import cv2
 import numpy as np
 from PIL import Image
+from IPython import embed
 
 from yolo import YOLO
 
@@ -17,17 +18,18 @@ yolo = YOLO()
 #   调用摄像头
 #   capture=cv2.VideoCapture("1.mp4")
 #-------------------------------------#
-capture=cv2.VideoCapture(0)
+capture=cv2.VideoCapture('data/cars.ts')# 问题出在这里，应该是没有读取进来
 fps = 0.0
 while(True):
     t1 = time.time()
     # 读取某一帧
-    ref,frame=capture.read()
+    ref,frame=capture.read()# 若读取正确,ref为true frame的shape:[1080,1920,3]
     # 格式转变，BGRtoRGB
     frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
-    # 转变成Image
+    # 转变成Image 每一帧是一个image?
     frame = Image.fromarray(np.uint8(frame))
-    # 进行检测
+    # 打断点，看一下此时的frame
+    # 进行检测，本质上还是使用detect_image函数
     frame = np.array(yolo.detect_image(frame))
     # RGBtoBGR满足opencv显示格式
     frame = cv2.cvtColor(frame,cv2.COLOR_RGB2BGR)
@@ -38,7 +40,7 @@ while(True):
 
     cv2.imshow("video",frame)
 
-    c= cv2.waitKey(1) & 0xff 
+    c= cv2.waitKey(1) & 0xff
     if c==27:
         capture.release()
         break
