@@ -78,7 +78,7 @@ def yolo_head(filters_list, in_filters):
         conv2d(in_filters, filters_list[0], 3),
         nn.Conv2d(filters_list[0], filters_list[1], 1),
     )
-    return m
+    return m# 最终返回的一个model
 
 #---------------------------------------------------#
 #   yolo_body
@@ -168,6 +168,7 @@ class YoloBody(nn.Module):
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512
         P5 = self.make_five_conv4(P5)
 
+        # 为什么要搞三个特征层？
         #---------------------------------------------------#
         #   第三个特征层
         #   y3=(batch_size,75,52,52)
