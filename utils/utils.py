@@ -12,12 +12,13 @@ from PIL import Image, ImageDraw, ImageFont
 from torch.autograd import Variable
 from torchvision.ops import nms
 
+from IPython import embed
 
 class DecodeBox(nn.Module):
     def __init__(self, anchors, num_classes, img_size):
         super(DecodeBox, self).__init__()
         #-----------------------------------------------------------#
-        #   13x13的特征层对应的anchor是[142, 110], [192, 243], [459, 401]
+        #   13x13的特征层对应的anchor是[142, 110], [192, 243], [459, 401],只有3个anchor box
         #   26x26的特征层对应的anchor是[36, 75], [76, 55], [72, 146]
         #   52x52的特征层对应的anchor是[12, 16], [19, 36], [40, 28]
         #-----------------------------------------------------------#
@@ -34,27 +35,30 @@ class DecodeBox(nn.Module):
         #   batch_size, 255, 26, 26
         #   batch_size, 255, 52, 52
         #-----------------------------------------------#
-        batch_size = input.size(0)
+        batch_size = input.size(0)# 每个batch的image数
         input_height = input.size(2)
         input_width = input.size(3)
 
         #-----------------------------------------------#
         #   输入为416x416时
-        #   stride_h = stride_w = 32、16、8
+        #   stride_h = stride_w = 32、16、8,它的物理意义是什么
         #-----------------------------------------------#
-        stride_h = self.img_size[1] / input_height
+        stride_h = self.img_size[1] / input_height# 缩放比例，预设的size和实际输入的size的比例
         stride_w = self.img_size[0] / input_width
         #-------------------------------------------------#
         #   此时获得的scaled_anchors大小是相对于特征层的
         #-------------------------------------------------#
+        # 归一到特征层上
         scaled_anchors = [(anchor_width / stride_w, anchor_height / stride_h) for anchor_width, anchor_height in self.anchors]
 
         #-----------------------------------------------#
         #   输入的input一共有三个，他们的shape分别是
-        #   batch_size, 3, 13, 13, 85
+        #   batch_size, 3, 13, 13, 85# 这个85是什么意思？
         #   batch_size, 3, 26, 26, 85
         #   batch_size, 3, 52, 52, 85
         #-----------------------------------------------#
+
+        # 这一个没看懂
         prediction = input.view(batch_size, self.num_anchors,
                                 self.bbox_attrs, input_height, input_width).permute(0, 1, 3, 4, 2).contiguous()
 
@@ -66,7 +70,7 @@ class DecodeBox(nn.Module):
         h = prediction[..., 3]
         # 获得置信度，是否有物体
         conf = torch.sigmoid(prediction[..., 4])
-        # 种类置信度
+        # 种类置信度  本质：概率
         pred_cls = torch.sigmoid(prediction[..., 5:])
 
         FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
@@ -155,22 +159,27 @@ class DecodeBox(nn.Module):
         #   将输出结果调整成相对于输入图像大小
         #----------------------------------------------------------#
         _scale = torch.Tensor([stride_w, stride_h] * 2).type(FloatTensor)
+        # 拼接
+        # 参数为什么是-1?答：根据行列情况决定是按照行还是列进行拼接 拼接原则：上下拼接要列数相同，左右拼接要行数相同
+        # torch.Tensor.view():Returns a new tensor with the same data as the self tensor but of a different shape
         output = torch.cat((pred_boxes.view(batch_size, -1, 4) * _scale,
                             conf.view(batch_size, -1, 1), pred_cls.view(batch_size, -1, self.num_classes)), -1)
         return output.data
         
 def letterbox_image(image, size):
-    iw, ih = image.size
+    iw, ih = image.size# 原图像的size
     w, h = size
-    scale = min(w/iw, h/ih)
+    scale = min(w/iw, h/ih)# 算缩放比例
     nw = int(iw*scale)
     nh = int(ih*scale)
 
-    image = image.resize((nw,nh), Image.BICUBIC)
-    new_image = Image.new('RGB', size, (128,128,128))
-    new_image.paste(image, ((w-nw)//2, (h-nh)//2))
+    image = image.resize((nw,nh), Image.BICUBIC)# 对原图像进行resize
+    new_image = Image.new('RGB', size, (128,128,128))# (128,128,128)是指颜色color，三个颜色通道的值
+    new_image.paste(image, ((w-nw)//2, (h-nh)//2))# ((w-nw)//2, (h-nh)//2)给定upper left corner坐标
     return new_image
 
+#这是干啥的?
+# 很重要：根据input_shape和image_shape之间的缩放比例来调整各个目标的坐标点
 def yolo_correct_boxes(top, left, bottom, right, input_shape, image_shape):
     new_shape = image_shape*np.min(input_shape/image_shape)
 
@@ -192,6 +201,8 @@ def yolo_correct_boxes(top, left, bottom, right, input_shape, image_shape):
         box_maxes[:, 1:2]
     ],axis=-1)
     boxes *= np.concatenate([image_shape, image_shape],axis=-1)
+    # 用一下这个boxes
+    # embed()
     return boxes
 
 def bbox_iou(box1, box2, x1y1x2y2=True):
@@ -226,7 +237,7 @@ def bbox_iou(box1, box2, x1y1x2y2=True):
 def non_max_suppression(prediction, num_classes, conf_thres=0.5, nms_thres=0.4):
     #----------------------------------------------------------#
     #   将预测结果的格式转换成左上角右下角的格式。
-    #   prediction  [batch_size, num_anchors, 85]
+    #   prediction  [batch_size, num_anchors, 85] 85是什么
     #----------------------------------------------------------#
     box_corner = prediction.new(prediction.shape)
     box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
@@ -237,6 +248,10 @@ def non_max_suppression(prediction, num_classes, conf_thres=0.5, nms_thres=0.4):
 
     output = [None for _ in range(len(prediction))]
     for image_i, image_pred in enumerate(prediction):
+        # 查看image_i,image_i的物理意义是什么？
+        # embed()
+        print("------image i ------")
+        print(image_i)
         #----------------------------------------------------------#
         #   对种类预测部分取max。
         #   class_conf  [batch_size, num_anchors, 1]    种类置信度
